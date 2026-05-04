@@ -6,19 +6,23 @@
       <mass value="267.0"/>
       <inertia ixx="50.0" ixy="0.0" ixz="0.0" iyy="50.0" iyz="0.0" izz="5.0"/>
     </inertial>
+
+    <!-- ВИЗУАЛ: ваша 3D модель из OBJ файла -->
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="models/rocket/rocket.obj"/>
+        <mesh filename="rocket.obj"/>
       </geometry>
       <material name="rocket_material">
-        <color rgba="0.8 0.8 0.8 1.0"/>
+        <color rgba="0.7 0.7 0.7 1.0"/>
       </material>
     </visual>
+
+    <!-- КОЛЛИЗИЯ: используем простой цилиндр для стабильной физики -->
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <box size="1.0 1.0 3.0"/>
+        <cylinder radius="0.7" length="3.0"/>
       </geometry>
     </collision>
   </link>
