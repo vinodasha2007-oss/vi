@@ -1,4 +1,6 @@
-# pybulletSIM.py
+# pybulletSIM.py - альтернативная симуляция (не используется в main.py)
+# Этот файл оставлен для совместимости, основная симуляция в main.py
+
 import pybullet as p
 import pybullet_data
 import numpy as np
@@ -8,60 +10,74 @@ import roket
 
 
 class PyBulletSimulation:
+    """Альтернативная симуляция с использованием PyBullet физики"""
+
     def __init__(self, gui=True):
         self.client = p.connect(p.GUI if gui else p.DIRECT)
         self.rocket_id = None
         self.time = 0
         self.history = {'time': [], 'height': [], 'velocity': [], 'thrust': []}
-        roket.reset_state()
+
+        self.physics = roket.RocketPhysics()
+        self.physics.reset_state()
 
     def setup_environment(self, urdf_path="rocket.urdf"):
+        """Настройка среды с вашей 3D моделью"""
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
-        p.setGravity(*Simcfg.gravity)
+        p.setGravity(0, 0, 0)  # Гравитация из roket.py
         p.loadURDF("plane.urdf", useFixedBase=True)
 
-        # НАСТРОЙКА КАМЕРЫ - ПРИБЛИЖЕННАЯ
+        # Настройка камеры
         p.resetDebugVisualizerCamera(
-            cameraDistance=Simcfg.camera_distance,  # 80 метров
-            cameraYaw=Simcfg.camera_yaw,  # 0° - вид прямо
-            cameraPitch=Simcfg.camera_pitch,  # 0° - горизонтально
-            cameraTargetPosition=Simcfg.camera_target  # [0, 0, 150]
+            cameraDistance=50,
+            cameraYaw=25,
+            cameraPitch=-30,
+            cameraTargetPosition=[0, 0, RocketCFG.start_height]
         )
 
-        # Включаем визуализацию
         p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1)
-        p.configureDebugVisualizer(p.COV_ENABLE_SHADOWS, 1)
         p.configureDebugVisualizer(p.COV_ENABLE_GUI, 1)
 
-        # Добавляем подсветку
-        p.configureDebugVisualizer(p.COV_ENABLE_SINGLE_STEP_RENDERING, 0)
+        # Маркеры высот
+        for h in [300, 250, 200, 150, 100, 50, 30, 15, 8, 3]:
+            p.addUserDebugText(f"{h}м", [0, 0, h], [0.6, 0.6, 0.6], 0.7)
 
-        # Маркеры высот для ориентации
-        for h in [300, 250, 200, 150, 100, 50, 20, 10, 5]:
-            p.addUserDebugText(f"{h}м", [0, 0, h], [0.7, 0.7, 0.7], 0.8)
+        # Посадочная площадка
+        pad_visual = p.createVisualShape(p.GEOM_BOX, halfExtents=[6, 6, 0.05],
+                                         rgbaColor=[0.55, 0.55, 0.55, 1.0])
+        pad_body = p.createMultiBody(baseMass=0, baseVisualShapeIndex=pad_visual,
+                                     basePosition=[0, 0, 0.01])
 
-        # Яркий маркер места посадки
-        p.addUserDebugText("🏁 ПОСАДКА", [0, 0, 0.5], [1, 1, 0], 1.5)
-        p.addUserDebugLine([-3, 0, 0], [3, 0, 0], [1, 0, 0], 3)
-        p.addUserDebugLine([0, -3, 0], [0, 3, 0], [1, 0, 0], 3)
+        # Красный круг
+        for r in [3.5, 2.5, 1.5, 0.8]:
+            circle_visual = p.createVisualShape(p.GEOM_CYLINDER, radius=r, length=0.02,
+                                                rgbaColor=[0.9, 0.2, 0.1, 1.0])
+            circle_body = p.createMultiBody(baseMass=0, baseVisualShapeIndex=circle_visual,
+                                            basePosition=[0, 0, 0.02])
 
-        # Добавляем круг посадки
-        for angle in np.linspace(0, 2 * np.pi, 36):
-            x = 2 * np.cos(angle)
-            y = 2 * np.sin(angle)
-            p.addUserDebugLine([x, y, 0.01], [2 * np.cos(angle + 0.17), 2 * np.sin(angle + 0.17), 0.01], [0, 1, 0], 1)
+        p.addUserDebugText("🎯 ЦЕНТР ПОСАДКИ", [0, 0, 0.5], [1, 1, 0], 1.2)
 
         # Загрузка ракеты
         loader = RocketLoader(self.client)
-        self.rocket_id = loader.load(urdf_path)
+        try:
+            self.rocket_id = loader.load(urdf_path)
+            print(f"✅ Загружена 3D модель из {urdf_path}")
+        except:
+            print(f"❌ Не удалось загрузить {urdf_path}")
+            return
 
         if self.rocket_id is None:
             raise RuntimeError("Не удалось загрузить ракету")
 
-        print(f"\n✅ СИМУЛЯЦИЯ ГОТОВА")
-        print(f"   Камера: дистанция={Simcfg.camera_distance}м, вид сбоку")
+        # Начальная позиция и скорость
+        p.resetBasePositionAndOrientation(self.rocket_id, [0, 0, RocketCFG.start_height], [0, 0, 0, 1])
+        p.resetBaseVelocity(self.rocket_id, [0, 0, RocketCFG.start_velocity])
+
+        print(f"\n✅ АЛЬТЕРНАТИВНАЯ СИМУЛЯЦИЯ ГОТОВА")
+        print(f"   Высота: {RocketCFG.start_height}м, Скорость: {RocketCFG.start_velocity}м/с")
 
     def step(self):
+        """Один шаг симуляции"""
         if self.rocket_id is None:
             return
 
@@ -71,14 +87,8 @@ class PyBulletSimulation:
         height = pos[2]
         velocity = vel[2]
 
-        # Стабилизация каждые 10 шагов
-        if int(self.time * 240) % 10 == 0 and height > 0.5:
-            p.resetBasePositionAndOrientation(self.rocket_id, pos, [0, 0, 0, 1])
-            p.resetBaseVelocity(self.rocket_id, [0, 0, vel[2]], [0, 0, 0])
-
-        # Расчет сил
-        mass = roket.get_current_mass()
-        force = roket.total_force(self.time, vel, mass, height)
+        # Расчёт сил через roket.py
+        force = self.physics.total_force(self.time, np.array([0, 0, velocity]), height)
 
         # Применение силы
         p.applyExternalForce(self.rocket_id, -1, force, [0, 0, 0], p.LINK_FRAME)
@@ -93,13 +103,14 @@ class PyBulletSimulation:
         self.time += Simcfg.step
 
     def run_simulation(self, duration=None):
+        """Запуск симуляции"""
         if duration is None:
             duration = Simcfg.duration
 
         steps = int(duration / Simcfg.step)
 
         print("\n" + "=" * 60)
-        print("🚀 ПОСАДКА РАКЕТЫ")
+        print("🚀 АЛЬТЕРНАТИВНАЯ СИМУЛЯЦИЯ ПОСАДКИ")
         print("=" * 60)
         print(f"{'Время':6} | {'Высота':8} | {'Скорость':9} | {'Тяга':8} | {'Топливо':6}")
         print("-" * 55)
@@ -108,9 +119,9 @@ class PyBulletSimulation:
             self.step()
 
             if i % 120 == 0 and len(self.history['time']) > 0:
-                fuel = roket.get_fuel()
+                fuel_left = RocketCFG.mass_fuel - self.physics.fuel_burned
                 print(f"{self.time:5.1f} | {self.history['height'][-1]:8.1f} | "
-                      f"{self.history['velocity'][-1]:8.2f} | {self.history['thrust'][-1]:7.0f} | {fuel:6.1f}")
+                      f"{self.history['velocity'][-1]:8.2f} | {self.history['thrust'][-1]:7.0f} | {max(0, fuel_left):6.1f}")
 
             if len(self.history['height']) > 0 and self.history['height'][-1] <= 0.3:
                 speed = abs(self.history['velocity'][-1])
@@ -128,7 +139,35 @@ class PyBulletSimulation:
         return self.history
 
     def dispose(self):
+        """Отключение"""
         try:
             p.disconnect()
         except:
             pass
+
+
+# Функции для совместимости
+_physics_instance = None
+
+
+def get_physics():
+    global _physics_instance
+    if _physics_instance is None:
+        _physics_instance = roket.RocketPhysics()
+    return _physics_instance
+
+
+def reset_state():
+    get_physics().reset_state()
+
+
+def get_current_mass():
+    return get_physics().get_current_mass()
+
+
+def get_fuel():
+    return RocketCFG.mass_fuel - get_physics().fuel_burned
+
+
+def total_force(t, vel, mass, height):
+    return get_physics().total_force(t, vel, height)
