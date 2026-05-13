@@ -35,8 +35,8 @@ class RocketLandingSimulation:
         self.ground_level = 0.0
         self.simulation_error = False
 
-        self.rocket_height = 3.0
-        self.rocket_radius = 0.7
+        self.rocket_height = RocketCFG.rocket_height
+        self.rocket_radius = RocketCFG.rocket_radius
         self.rocket_bottom_offset = 1.5
 
         self.contact_count = 0
@@ -51,10 +51,10 @@ class RocketLandingSimulation:
             if self.gui:
                 self.client = p.connect(p.GUI)
                 p.resetDebugVisualizerCamera(
-                    cameraDistance=8,
+                    cameraDistance=15,
                     cameraYaw=25,
-                    cameraPitch=-20,
-                    cameraTargetPosition=[0, 0, RocketCFG.start_height - 50],
+                    cameraPitch=-25,
+                    cameraTargetPosition=[0, 0, RocketCFG.start_height],
                     physicsClientId=self.client
                 )
                 p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1)
@@ -63,18 +63,17 @@ class RocketLandingSimulation:
                 self.client = p.connect(p.DIRECT)
 
             p.setAdditionalSearchPath(pybullet_data.getDataPath())
-            p.setGravity(*Simcfg.gravity)
+            p.setGravity(0, 0, 0)  # Отключаем гравитацию PyBullet
             p.setTimeStep(Simcfg.step, physicsClientId=self.client)
 
             self.ground_id = p.loadURDF("plane.urdf", useFixedBase=True)
             p.changeVisualShape(self.ground_id, -1, rgbaColor=[0.4, 0.5, 0.3, 1.0])
 
             p.setPhysicsEngineParameter(
-                numSolverIterations=150,
+                numSolverIterations=100,
                 useSplitImpulse=True,
-                splitImpulsePenetrationThreshold=0.0005,
-                contactBreakingThreshold=0.0005,
-                restitutionVelocityThreshold=0.05,
+                splitImpulsePenetrationThreshold=0.001,
+                contactBreakingThreshold=0.001,
                 physicsClientId=self.client
             )
 
@@ -139,7 +138,7 @@ class RocketLandingSimulation:
         try:
             urdf_path = "rocket.urdf"
             if not os.path.exists(urdf_path):
-                print(f"Создаем простую серую ракету")
+                print(f"Создаем простую ракету")
                 self.create_simple_rocket()
             else:
                 start_pos = [0, 0, RocketCFG.start_height]
@@ -158,27 +157,29 @@ class RocketLandingSimulation:
                 except:
                     pass
 
+                # Нормальные значения контактной физики (без заглушек)
                 p.changeDynamics(
                     self.rocket_id, -1,
-                    restitution=0.05,
-                    lateralFriction=0.5,
-                    linearDamping=0.2,
-                    angularDamping=0.2,
-                    contactStiffness=200000,
-                    contactDamping=50000,
+                    restitution=0.1,
+                    lateralFriction=0.3,
+                    linearDamping=0.05,
+                    angularDamping=0.05,
+                    contactStiffness=10000,
+                    contactDamping=1000,
                     physicsClientId=self.client
                 )
 
             if self.rocket_id is None or self.rocket_id < 0:
                 raise Exception("Не удалось создать ракету!")
 
+            # Устанавливаем начальную скорость
             p.resetBaseVelocity(
                 self.rocket_id,
                 linearVelocity=[0, 0, RocketCFG.start_velocity],
                 physicsClientId=self.client
             )
 
-            print(f"Серая ракета успешно создана")
+            print(f"Ракета успешно создана")
 
         except Exception as e:
             print(f"Ошибка загрузки ракеты: {e}")
@@ -200,13 +201,6 @@ class RocketLandingSimulation:
                 rgbaColor=[0.7, 0.7, 0.7, 1.0]
             )
 
-            nose_visual = p.createVisualShape(
-                p.GEOM_CYLINDER,
-                radius=0.5,
-                length=1.0,
-                rgbaColor=[0.8, 0.8, 0.8, 1.0]
-            )
-
             self.rocket_id = p.createMultiBody(
                 baseMass=RocketCFG.mass_full,
                 baseCollisionShapeIndex=body_collision,
@@ -217,25 +211,16 @@ class RocketLandingSimulation:
 
             p.changeDynamics(
                 self.rocket_id, -1,
-                restitution=0.05,
-                lateralFriction=0.5,
-                linearDamping=0.2,
-                angularDamping=0.2,
-                contactStiffness=200000,
-                contactDamping=50000,
+                restitution=0.1,
+                lateralFriction=0.3,
+                linearDamping=0.05,
+                angularDamping=0.05,
+                contactStiffness=10000,
+                contactDamping=1000,
                 physicsClientId=self.client
             )
 
-            if self.gui:
-                nose_body = p.createMultiBody(
-                    baseMass=0,
-                    baseVisualShapeIndex=nose_visual,
-                    basePosition=[0, 0, RocketCFG.start_height + 1.5],
-                    baseOrientation=[0, 0, 0, 1]
-                )
-                self.decoration_bodies.append(nose_body)
-
-            print(f"Простая серая ракета создана")
+            print(f"Простая ракета создана")
 
         except Exception as e:
             print(f"Ошибка создания ракеты: {e}")
@@ -268,21 +253,18 @@ class RocketLandingSimulation:
 
         print(f"\n=== ПОСАДКА ВЫПОЛНЕНА ===")
         print(f"Время: {self.sim_time:.2f} с")
-        print(f"Высота нижней точки: 0.000 м")
         print(f"Скорость посадки: {self.landing_velocity:.2f} м/с")
 
         target_speed = abs(RocketCFG.target_speed_landing)
         if self.landing_velocity <= target_speed:
-            print(f"РЕЗУЛЬТАТ: МЯГКАЯ ПОСАДКА [OK] (скорость {self.landing_velocity:.2f} <= {target_speed} м/с)")
+            print(f"РЕЗУЛЬТАТ: МЯГКАЯ ПОСАДКА [OK]")
         else:
-            print(f"РЕЗУЛЬТАТ: ЖЕСТКАЯ ПОСАДКА [FAIL] (скорость {self.landing_velocity:.2f} > {target_speed} м/с)")
-
-        if len(self.height_data) > 0:
-            self.height_data[-1] = 0.0
+            print(f"РЕЗУЛЬТАТ: ЖЕСТКАЯ ПОСАДКА [FAIL]")
 
         self.landing_complete = True
 
     def update_forces(self):
+        """Применение сил к ракете - без тормозной заглушки"""
         if self.rocket_id is None or self.landing_complete:
             return
 
@@ -292,28 +274,15 @@ class RocketLandingSimulation:
 
             height = position[2]
             vel_z = velocity[2]
-
             bottom_height = self.get_bottom_height()
 
-            # ЗАЩИТА ОТ УХОДА ПОД ЗЕМЛЮ
-            if bottom_height < -0.05:
-                correct_height = self.rocket_height / 2
-                p.resetBasePositionAndOrientation(
-                    self.rocket_id,
-                    [0, 0, correct_height],
-                    [0, 0, 0, 1],
-                    physicsClientId=self.client
-                )
-                p.resetBaseVelocity(self.rocket_id, [0, 0, 0], [0, 0, 0])
-                bottom_height = 0
-                print("⚠️ КОРРЕКЦИЯ: ракета возвращена на землю")
-
+            # Проверка контакта с землёй
             has_contact = self.check_ground_contact()
 
-            if bottom_height <= 0.1 or has_contact:
+            # Обработка посадки
+            if bottom_height <= 0.15 or has_contact:
                 self.stable_landing_frames += 1
-
-                if self.stable_landing_frames >= 5 and not self.landing_triggered:
+                if self.stable_landing_frames >= 3 and not self.landing_triggered:
                     self.landing_triggered = True
                     self.is_landed = True
                     self.finalize_landing()
@@ -322,39 +291,44 @@ class RocketLandingSimulation:
                 if self.stable_landing_frames > 0:
                     self.stable_landing_frames = 0
 
-            if bottom_height < 1.0 and bottom_height > 0.1 and not self.landing_triggered:
-                brake_force = np.array([0, 0, 50000])
-                p.applyExternalForce(
-                    self.rocket_id, -1, brake_force, [0, 0, 0],
-                    p.WORLD_FRAME, physicsClientId=self.client
-                )
-
-            if not self.landing_triggered:
+            # РАСЧЁТ СИЛ (только через физику из roket.py, без заглушек)
+            if not self.landing_triggered and not has_contact:
                 current_mass = self.physics.get_current_mass()
                 p.changeDynamics(self.rocket_id, -1, mass=current_mass)
 
-                vel_array = np.array([0, 0, vel_z])
-                force = self.physics.total_force(self.sim_time, vel_array, height)
+                # Вектор скорости
+                vel_array = np.array([velocity[0], velocity[1], velocity[2]])
 
+                # Расчёт сил
+                thrust_vec = self.physics.calculate_thrust(self.sim_time, height, vel_z)
+                drag_vec = self.physics.calculate_drag(vel_array, height)
+                gravity_vec = self.physics.calculate_gravity()
+
+                # Суммарная сила
+                total_force = thrust_vec + drag_vec + gravity_vec
+
+                # Применение силы
                 p.applyExternalForce(
-                    self.rocket_id, -1, force, [0, 0, 0],
-                    p.WORLD_FRAME, physicsClientId=self.client
+                    self.rocket_id,
+                    -1,
+                    total_force,
+                    [0, 0, 0],
+                    p.LINK_FRAME,
+                    physicsClientId=self.client
                 )
 
+                # Сохраняем данные
                 self.time_data.append(self.sim_time)
                 self.height_data.append(bottom_height)
                 self.velocity_data.append(vel_z)
-                self.thrust_data.append(force[2])
+                self.thrust_data.append(thrust_vec[2])
                 self.mass_data.append(current_mass)
 
-                if self.gui and len(self.time_data) % 30 == 0:
-                    thrust_status = "ВКЛЮЧЕН" if abs(force[2]) > 500 else "ВЫКЛЮЧЕН"
-                    contact_status = "ЗЕМЛЯ" if has_contact else "ВОЗДУХ"
-                    print(
-                        f"Время: {self.sim_time:.2f}с | Нижняя точка: {bottom_height:.3f}м | "
-                        f"Скорость: {vel_z:.2f}м/с | Тяга: {force[2]:.0f}Н | "
-                        f"{thrust_status} | {contact_status}"
-                    )
+                # Вывод отладки
+                if self.gui and len(self.time_data) % 60 == 0:
+                    print(f"[{self.sim_time:5.1f}s] Высота: {bottom_height:6.1f}м | "
+                          f"Скорость: {vel_z:6.2f}м/с | Тяга: {thrust_vec[2]:7.0f}Н | "
+                          f"Масса: {current_mass:5.1f}кг")
 
         except Exception as e:
             print(f"Ошибка в update_forces: {e}")
@@ -368,19 +342,19 @@ class RocketLandingSimulation:
             height = position[2]
 
             if height > 100:
-                camera_distance = 25
-                camera_pitch = -35
-            elif height > 50:
                 camera_distance = 20
                 camera_pitch = -30
+            elif height > 50:
+                camera_distance = 16
+                camera_pitch = -28
             elif height > 20:
-                camera_distance = 15
+                camera_distance = 13
                 camera_pitch = -25
-            elif height > 5:
-                camera_distance = 12
+            elif height > 10:
+                camera_distance = 10
                 camera_pitch = -22
             else:
-                camera_distance = 8
+                camera_distance = 7
                 camera_pitch = -18
 
             p.resetDebugVisualizerCamera(
@@ -418,12 +392,12 @@ class RocketLandingSimulation:
 
     def run_simulation(self):
         print("СИМУЛЯЦИЯ ПОСАДКИ РАКЕТЫ")
-        print(f"Высота ракеты: {self.rocket_height} м")
-        print(f"Начальная высота (центр масс): {RocketCFG.start_height} м")
-        print(f"Начальная высота (нижняя точка): {RocketCFG.start_height - self.rocket_height / 2:.2f} м")
+        print("=" * 60)
+        print(f"Начальная высота: {RocketCFG.start_height} м")
+        print(f"Начальная скорость: {RocketCFG.start_velocity} м/с")
         print(f"Масса ракеты: {RocketCFG.mass_full} кг")
         print(f"Максимальная тяга: {RocketCFG.max_thrust} Н")
-        print(f"Допустимая скорость посадки: {abs(RocketCFG.target_speed_landing)} м/с")
+        print("=" * 60)
 
         try:
             self.setup_pybullet()
@@ -433,7 +407,7 @@ class RocketLandingSimulation:
                 print("Ошибка инициализации")
                 return
 
-            max_steps = 100000
+            max_steps = 50000
             step_count = 0
 
             while step_count < max_steps and not self.landing_complete and not self.simulation_error:
@@ -448,10 +422,10 @@ class RocketLandingSimulation:
                 step_count += 1
 
                 if self.gui:
-                    time.sleep(Simcfg.step)
+                    time.sleep(Simcfg.step * 0.5)
 
         except KeyboardInterrupt:
-            print("\nПрервано")
+            print("\nПрервано пользователем")
         except Exception as e:
             print(f"\nОшибка: {e}")
             import traceback
@@ -477,17 +451,9 @@ class RocketLandingSimulation:
         ax1.legend()
         ax1.grid(True, alpha=0.3)
 
-        if len(self.height_data) > 0:
-            ax1.annotate(f'Конечная высота: {self.height_data[-1]:.3f} м',
-                         xy=(self.time_data[-1], self.height_data[-1]),
-                         xytext=(10, 10), textcoords='offset points',
-                         fontsize=10, color='blue',
-                         bbox=dict(boxstyle='round,pad=0.3', facecolor='yellow', alpha=0.7))
-
         ax2.plot(self.time_data, self.velocity_data, 'r-', linewidth=2)
         target_speed = abs(RocketCFG.target_speed_landing)
-        ax2.axhline(y=target_speed, color='g', linestyle='--', label=f'Макс. скорость посадки ({target_speed} м/с)')
-        ax2.axhline(y=-target_speed, color='g', linestyle='--')
+        ax2.axhline(y=target_speed, color='g', linestyle='--', label=f'Цель ({target_speed} м/с)')
         ax2.axhline(y=0, color='k', linestyle='-', linewidth=1, alpha=0.5)
         ax2.set_xlabel('Время (с)')
         ax2.set_ylabel('Скорость (м/с)')
@@ -506,29 +472,6 @@ class RocketLandingSimulation:
         ax4.set_ylabel('Масса (кг)')
         ax4.set_title('Масса ракеты')
         ax4.grid(True, alpha=0.3)
-
-        target_speed = abs(RocketCFG.target_speed_landing)
-        is_soft_landing = self.landing_velocity <= target_speed
-
-        result_text = f"""
-        РЕЗУЛЬТАТЫ ПОСАДКИ:
-        • Время посадки: {self.sim_time:.2f} с
-        • Скорость посадки: {self.landing_velocity:.2f} м/с
-        • Допустимая скорость: {target_speed} м/с
-        • Конечная высота (нижняя точка): {self.height_data[-1]:.3f} м
-        • Конечная масса: {self.mass_data[-1]:.1f} кг
-        • Расход топлива: {RocketCFG.mass_fuel - (self.mass_data[-1] - RocketCFG.mass_empty):.1f} кг
-        """
-
-        if is_soft_landing:
-            result_text += "\n    СТАТУС: УСПЕШНАЯ МЯГКАЯ ПОСАДКА [OK]"
-            color = 'lightgreen'
-        else:
-            result_text += f"\n    СТАТУС: ЖЕСТКАЯ ПОСАДКА [FAIL]"
-            color = 'lightcoral'
-
-        fig.text(0.02, 0.02, result_text, fontsize=10,
-                 bbox=dict(boxstyle="round", facecolor=color, alpha=0.9))
 
         plt.tight_layout()
         plt.show()
