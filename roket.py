@@ -7,6 +7,7 @@ class RocketPhysics:
         self.current_mass = RocketCFG.mass_full
         self.fuel_burned = 0.0
         self.prev_thrust = 0.0
+        self.engine_on = True
 
     def calculate_thrust(self, t: float, height: float, velocity: float) -> np.ndarray:
         g = abs(Simcfg.gravity[2])
@@ -109,3 +110,7 @@ class RocketPhysics:
         self.current_mass = RocketCFG.mass_full
         self.fuel_burned = 0.0
         self.prev_thrust = 0.0
+        self.engine_on = True
+
+    def get_fuel(self) -> float:
+        return RocketCFG.mass_fuel - self.fuel_burned
